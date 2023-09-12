@@ -22,7 +22,7 @@ class TradingAlgorithm:
         self.buy_count = 1
         self.sell_count = 1
         self.multipule = 2
-        self.threshold = 15
+        self.threshold = 50
 
     def orderSize(self, buy_count):
         return max(math.floor(buy_count / 2) + 1, 1)
@@ -41,6 +41,12 @@ class TradingAlgorithm:
                 return N
             N += 1
 
+    def get_last_price(self, session):
+
+        price_query = session.get('https://api.hitbtc.com/api/3/public/ticker?symbols=XRPUSDT_PERP').json()
+        last_price = float(price_query["XRPUSDT_PERP"]["last"])
+        return last_price
+
     def start(self, session):
         price_query = session.get('https://api.hitbtc.com/api/3/public/ticker?symbols=XRPUSDT_PERP').json()
         last_price = float(price_query["XRPUSDT_PERP"]["last"])
@@ -48,8 +54,8 @@ class TradingAlgorithm:
         marginAccount = session.get('https://api.hitbtc.com/api/3/futures/account/isolated/XRPUSDT_PERP').json()
         active_posts = marginAccount['positions']
         marginBalance = float(marginAccount['currencies'][0]['margin_balance'])
-        self.multipule = math.floor(marginBalance / 0.5) + 1
-        self.threshold = math.floor( float(marginAccount['leverage']) * marginBalance / last_price )
+        # self.multipule = math.floor(marginBalance / 0.5) + 1
+        # self.threshold = math.floor( float(marginAccount['leverage']) * marginBalance / last_price )
 
         if active_posts is None:
             self.stride = last_price * 0.0012
@@ -71,7 +77,7 @@ class TradingAlgorithm:
 
     def updateOrder(self, session, side, price, quantity):
         order_data = {
-            'symbol': f'{self.asset}USDT_PERP',
+            'symbol': 'XRPUSDT_PERP',
             'side': side,
             'time_in_force': 'Day',
             'quantity': quantity,
@@ -118,7 +124,7 @@ class TradingAlgorithm:
                     else:
                         return
                 else:
-                    if last_price <= min(self.buy_price_prev, (price_entry * 0.999)) and (size_quantity < self.threshold * self.multipule):
+                    if last_price <= min(self.buy_price_prev, (price_entry * 0.999)) and (size_quantity < self.threshold):
                         buy = self.updateOrder(session, "buy", last_price, self.orderSize(self.buy_count) * self.multipule)
                         return buy
                     else:
@@ -133,8 +139,7 @@ class TradingAlgorithm:
                     else:
                         return
                 else:
-                    if last_price >= max(self.sell_price_prev, (price_entry * 1.001)) and (
-                            size_quantity < self.threshold * self.multipule):
+                    if last_price >= max(self.sell_price_prev, (price_entry * 1.001)) and (size_quantity < self.threshold):
                         sell = self.updateOrder(session, "sell", last_price, self.orderSize(self.sell_count) * self.multipule)
                         return sell
                     else:
@@ -144,7 +149,7 @@ def on_message(ws, message):
     data = json.loads(message)
     
     # Use the trading algorithm instance to access methods and data
-    last_price = trading_algo.get_last_price()
+    last_price = trading_algo.get_last_price(session)
     tick_data = data["data"]["XRPUSDT_PERP"]
     print("The XRP ticker ask bid, last, sell buy prices, buy sell counts are:", tick_data["a"], tick_data["b"], last_price, trading_algo.sell_price_prev, trading_algo.buy_price_prev, trading_algo.buy_count, trading_algo.sell_count)
     
@@ -173,7 +178,7 @@ def run_websocket():
             ws.run_forever(http_proxy_host="127.0.0.1", http_proxy_port="10900", proxy_type="http")
 
         except Exception as e:
-            print(f"WebSocket connection error: {e}")
+            print("WebSocket connection error: ", {e})
             print("Attempting to reconnect in 5 seconds...")
             time.sleep(5)
     print("WebSocket connection will not attempt to reconnect after one day.")
