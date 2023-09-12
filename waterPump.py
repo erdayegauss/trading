@@ -10,7 +10,7 @@ session.proxies = {
     'http': 'http://127.0.0.1:10900',
     'https': 'http://127.0.0.1:10900',
 }
-session.auth = ("ZTTen-xc8YAxDydaWNgXI6QzJt89ah0I", "lPsul5B7dUF82QwUkRTAsf0rlHm4cxE9")
+session.auth = ("", "")
 
 class TradingAlgorithm:
     def __init__(self, ws_endpoint="wss://api.hitbtc.com/api/3/ws/public", asset="XRP"):
