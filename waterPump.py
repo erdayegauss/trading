@@ -10,7 +10,8 @@ session.proxies = {
     'http': 'http://127.0.0.1:10900',
     'https': 'http://127.0.0.1:10900',
 }
-session.auth = ("", "")
+
+session.auth = ("ZTTen-xc8YAxDydaWNgXI6QzJt89ah0I", "lPsul5B7dUF82QwUkRTAsf0rlHm4cxE9")
 
 class TradingAlgorithm:
     def __init__(self, ws_endpoint="wss://api.hitbtc.com/api/3/ws/public", asset="XRP"):
@@ -23,6 +24,26 @@ class TradingAlgorithm:
         self.sell_count = 1
         self.multipule = 2
         self.threshold = 50
+
+# base = 1.8
+# def orderSize1(buy_count):
+#     return max(math.floor(math.floor(1.8**buy_count/2.5)+1),1)
+
+
+# def accumulate_Order1(N):
+#     x_accumulated = 0
+#     for i in range(1, N + 1):
+#         x_accumulated += orderSize1(i)
+#     return x_accumulated
+
+# def orderCounts1(x):
+#     N = 1
+#     while True:
+#         accumulated_x = accumulate_Order1(N)
+#         if accumulated_x >= x:
+#             return N
+#         N += 1
+
 
     def orderSize(self, buy_count):
         return max(math.floor(buy_count / 2) + 1, 1)
