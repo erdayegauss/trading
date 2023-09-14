@@ -25,25 +25,27 @@ class TradingAlgorithm:
         self.multipule = 2
         self.threshold = 50
 
-# base = 1.8
-# def orderSize1(buy_count):
-#     return max(math.floor(math.floor(1.8**buy_count/2.5)+1),1)
 
+# The comparison between linear and exponential 
+# Linear result: 
+# each step result: 1 0.00156 0.00156 2
+# each step result: 2 0.003588 0.002912 4
+# each step result: 3 0.0062244 0.00423696 4
+# each step result: 4 0.009651719999999999 0.006267495 6
+# each step result: 5 0.014107235999999999 0.008405606181818182 6
+# each step result: 6 0.019899406799999998 0.011470619679999999 8
+# each step result: 7 0.02742922884 0.014830326871578947 8
+# each step result: 8 0.037217997492 0.0194944249175 10
+# each step result: 9 0.0499433967396 0.02474424764544828 10
 
-# def accumulate_Order1(N):
-#     x_accumulated = 0
-#     for i in range(1, N + 1):
-#         x_accumulated += orderSize1(i)
-#     return x_accumulated
-
-# def orderCounts1(x):
-#     N = 1
-#     while True:
-#         accumulated_x = accumulate_Order1(N)
-#         if accumulated_x >= x:
-#             return N
-#         N += 1
-
+# exponential 1.8 result: 
+# each step result: 1 0.00156 0.00156 1
+# each step result: 2 0.003588 0.002912 2
+# each step result: 3 0.0062244 0.0045682000000000006 3
+# each step result: 4 0.009651719999999999 0.00687889090909091 5
+# each step result: 5 0.014107235999999999 0.009922404631578946 8
+# each step result: 6 0.019899406799999998 0.014155072218181818 14
+# each step result: 7 0.02742922884 0.019876691451724136 25
 
     def orderSize(self, buy_count):
         if buy_count < 8 :
