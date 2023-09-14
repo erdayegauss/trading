@@ -46,7 +46,10 @@ class TradingAlgorithm:
 
 
     def orderSize(self, buy_count):
-        return max(math.floor(buy_count / 2) + 1, 1)
+        if buy_count < 8 :
+            return max(math.floor(math.floor(1.8**buy_count/2.5)+1),1)
+        else :
+            return max(math.floor(buy_count / 2) + 1, 1)
 
     def accumulate_Order(self, N):
         x_accumulated = 0
