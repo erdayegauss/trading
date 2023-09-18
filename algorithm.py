@@ -14,6 +14,7 @@ class TradingAlgorithm:
         self.threshold = 50
 
 
+
 # The comparison between linear and exponential 
 # Linear result: 
 # each step result: 1 0.00156 0.00156 2
@@ -77,6 +78,7 @@ class TradingAlgorithm:
             self.buy_price_prev = last_price - self.stride
             self.buy_count = 1
             self.sell_count = 1
+
         else:
             size_quantity = abs(float(active_posts[0]["quantity"]))
             price_entry = float(active_posts[0]["price_entry"])
@@ -87,7 +89,8 @@ class TradingAlgorithm:
             self.buy_count = self.orderCounts(size_quantity / self.multipule) + 1
             self.sell_count = self.orderCounts(size_quantity / self.multipule) + 1
 
-        r = session.delete("https://api.hitbtc.com/api/3/futures/order?&symbol=XRPUSDT_PERP").json()
+        r = session.delete("https://api.hitbtc.com/api/3/futures/order?&symbol=XRPUSDT_PERP")
+
 
     def updateOrder(self, session, side, price, quantity):
         order_data = {
@@ -100,7 +103,7 @@ class TradingAlgorithm:
         }
 
         response = session.post('https://api.hitbtc.com/api/3/futures/order/', data=order_data).json()
-        print("============ The order created at ",session.ticker_simulator.current_ticker['time'],session.position.price_entry)
+        print("============ The order created at ",session.ticker_simulator.current_ticker['time'],price)
         print(response)
 
         if side == "buy":
@@ -117,6 +120,7 @@ class TradingAlgorithm:
         active_posts = session.get('https://api.hitbtc.com/api/3/futures/account/isolated/XRPUSDT_PERP').json()['positions']
 
         if active_posts is None:
+
             if last_price <= self.buy_price_prev:
                 self.updateOrder(session, "buy", last_price, self.multipule)
             elif last_price >= self.sell_price_prev:
@@ -132,7 +136,11 @@ class TradingAlgorithm:
                 if last_price > price_entry:
                     if (last_price - price_entry) / price_entry >= 0.005:
                         delete = session.delete('https://api.hitbtc.com/api/3/futures/position/isolated/XRPUSDT_PERP').json()
-                        print("take profits at the prices of:", last_price)
+                        
+                        print("\n///////////////////////////////////////////////\n")
+                        print("//// take profits at the prices of:", last_price)
+                        print("\n///////////////////////////////////////////////\n")
+
                         self.start(session)
                         return
                     else:
@@ -148,7 +156,11 @@ class TradingAlgorithm:
                     if (price_entry - last_price) / last_price >= 0.005:
                         delete = session.delete('https://api.hitbtc.com/api/3/futures/position/isolated/XRPUSDT_PERP',
                                                 json={"price": last_price}).json()
-                        print("take profits at the price of:", last_price)
+
+                        print("\n///////////////////////////////////////////////\n")
+                        print("//// take profits at the prices of:", last_price)
+                        print("\n///////////////////////////////////////////////\n")
+
                         self.start(session)
                         
                         return
@@ -163,177 +175,127 @@ class TradingAlgorithm:
 
 
 
-
 class TrapAlgorithm:
     def __init__(self, ws_endpoint="wss://api.hitbtc.com/api/3/ws/public", asset="XRP"):
         self.ws_endpoint = ws_endpoint
         self.asset = asset
-        self.buy_price_prev = 0.0
-        self.sell_price_prev = 0.0
+        self.buy_init = 0.0
+        self.sell_init = 0.0
         self.stride = 0.0005
-        self.buy_count = 1
-        self.sell_count = 1
-        self.multipule = 2
+        self.buy_count = 0
+        self.sell_count = 0
+        self.multipule = 10
         self.threshold = 50
-        self.last_price = 0.0
-        self.grid = 0
 
 
-    def trap(self, session, price):
-        active_posts = session       
-        price_entry = active_posts[0].price_entry
-        quantity = active_posts[0].quantity
-    
-        self.grid = math.floor((price - price_entry)/self.stride)
+    def trap(self, session, last_price):
+        active_posts = session.get('https://api.hitbtc.com/api/3/futures/account/isolated/XRPUSDT_PERP').json()['positions']
 
-        # create order based on that
-        if (abs(math.floor((price - price_entry)/self.stride))  > abs(self.grid)) :
-
-            grid_price= price_entry + self.grid * self.stride 
-
-            order_data = {
-                'symbol': 'XRPUSDT_PERP',
-                'side': "buy",
-                'time_in_force': 'Day',
-                'quantity': -quantity,
-                'price': grid_price,
-                'type': 'stopLimit',
-                'stop_price': grid_price * 1.0002
-            }
-            self.grid = math.floor((price - price_entry)/self.stride)
-
-            # response = session.post('https://api.hitbtc.com/api/3/futures/order/', data=order_data).json()
-            # print("============ The order created: ===========\n")
-            # print(response)
-
-            # Create an Order object
-            order = Order(order_data)
-            order.fill_order(session[0])
-            print("============ The order created: ===========\n")
-            print(order_data)
-
-            timespot = date_obj = datetime.datetime.fromtimestamp(timestamps[index] / 1000).strftime("%Y-%m-%d %H:%M:%S")
-            print("the position info:",  timespot, session[0].price_entry, session[0].quantity )
-
-
-        
-    def start(self, session):
-
-        # price_query = session.get('https://api.hitbtc.com/api/3/public/ticker?symbols=XRPUSDT_PERP').json()
-        # last_price = float(price_query["XRPUSDT_PERP"]["last"])
-
-        # marginAccount = session.get('https://api.hitbtc.com/api/3/futures/account/isolated/XRPUSDT_PERP').json()
-        # active_posts = marginAccount['positions']
-        # marginBalance = float(marginAccount['currencies'][0]['margin_balance'])
-        # # self.multipule = math.floor(marginBalance / 0.5) + 1
-        # # self.threshold = math.floor( float(marginAccount['leverage']) * marginBalance / last_price )
-
-        ######### For test #########
-        active_posts = session       
-
-
-        # if active_posts is None:
-        ######### For test ######### 
-        if len(active_posts) == 0:
-            self.sell_price_prev = last_price + self.stride
-            self.buy_price_prev = last_price - self.stride
-
-
-        else:
-
-            # size_quantity = abs(float(active_posts[0]["quantity"]))
-            # price_entry = float(active_posts[0]["price_entry"])
-
-        ######### For test ######### 
-            size_quantity = abs(float(active_posts[0].quantity))
-            price_entry = float(active_posts[0].price_entry)
-
-
-        # r = session.delete("https://api.hitbtc.com/api/3/futures/order?&symbol=XRPUSDT_PERP").json()
-
-    def updateOrder(self, session,side, price, quantity,index):
-        # here is the preparition before the order process
-
-        order_data = {
-            'symbol': 'XRPUSDT_PERP',
-            'side': side,
-            'time_in_force': 'Day',
-            'quantity': quantity,
-            'price': price,
-            'type': 'limit'
-        }
-
-        # response = session.post('https://api.hitbtc.com/api/3/futures/order/', data=order_data).json()
-        # print("============ The order created: ===========\n")
-        # print(response)
-
-        ######### For test ######### 
-        if len(active_posts) == 0:
-            session.append(Position())
-
-        # Create an Order object
-        order = Order(order_data)
-        order.fill_order(session[0])
-        print("============ The order created: ===========\n")
-        print(order_data)
-
-        timespot = date_obj = datetime.datetime.fromtimestamp(timestamps[index] / 1000).strftime("%Y-%m-%d %H:%M:%S")
-        print("the position info:",  timespot, session[0].price_entry, session[0].quantity )
-
-
-
-
-        if side == "buy":
-            self.buy_price_prev = price - self.stride
-            self.buy_count += 1
-            self.stride *= 1.3
-        elif side == "sell":
-            self.sell_price_prev = price + self.stride
-            self.sell_count += 1
-            self.stride *= 1.3
-        return 
-
-    def create_orders(self, session, last_price, index):
-        # active_posts = session.get('https://api.hitbtc.com/api/3/futures/account/isolated/XRPUSDT_PERP').json()['positions']
-        ######### For test ######### 
-        active_posts = session
-
-        # if active_posts[0] is None:
-        ######### For test #########
-
-
-        if len(active_posts) == 0:
-            if last_price <= self.buy_price_prev:
-                order_data_buy = {
+        if active_posts is None:
+            if last_price <= self.sell_init:
+                order_data = {
                     'symbol': 'XRPUSDT_PERP',
-                    'side': "buy",
+                    'side': 'sell',
                     'time_in_force': 'Day',
-                    'quantity': -quantity,
-                    'price': self.buy_price_prev,
-                    'type': 'limit',
-                }   
-                
-                self.updateOrder(session, "buy", last_price, self.multipule,index)
+                    'quantity': self.multipule,
+                    'price': self.sell_init,
+                    'type': 'limit'
+                }                
+                self.issueOrder(session, order_data)     
 
-            elif last_price >= self.sell_price_prev:
-                order_data_sell = {
+            elif last_price >= self.buy_init:
+                order_data = {
                     'symbol': 'XRPUSDT_PERP',
-                    'side': "buy",
+                    'side': 'buy',
                     'time_in_force': 'Day',
-                    'quantity': -quantity,
-                    'price': self.sell_price_prev,
-                    'type': 'limit',
+                    'quantity': self.multipule,
+                    'price': self.buy_init,
+                    'type': 'limit'
                 }
-                self.updateOrder(session, "sell", last_price, self.multipule,index)
+                self.issueOrder(session, order_data) 
+
             else:
                 return
         else:
+            price_entry = float(active_posts[0]["price_entry"])
+            size_quantity = abs(float(active_posts[0]["quantity"]))
 
-            trap(session, last_price)
 
-            # size_quantity = float(active_posts[0]["quantity"])
-            # price_entry = float(active_posts[0]["price_entry"])
-            # price_liquidation = float(active_posts[0]["price_liquidation"])
-            # quantity = float(active_posts[0]["quantity"])
+            # create order based on the price difference grid
+            if size_quantity > 0 :                 
+                if (math.floor((last_price - price_entry)/self.stride)) > self.buy_count :
+                    grid_price= price_entry + self.buy_count * self.stride 
+                    side = "sell"
+                    order_data = {
+                        'symbol': 'XRPUSDT_PERP',
+                        'side': side,
+                        'time_in_force': 'Day',
+                        'quantity': size_quantity,
+                        'price': grid_price,
+                        'type': 'stopLimit',
+                        'stop_price': grid_price * 1.0002
+                    }
+                    
+                    self.issueOrder(session, order_data)                                                      
+                    self.buy_count = max(self.buy_count, math.floor((last_price - price_entry)/self.stride))
+                    print("current price and buy_count", price_entry, last_price, self.buy_count, grid_price )
+                elif   (self.buy_count >=3 and  (self.buy_count -1) <= (math.floor((last_price - price_entry)/self.stride)) and  (math.floor((last_price - price_entry)/self.stride)) <= self.buy_count) :
+                    deletePosition = session.delete('https://api.hitbtc.com/api/3/futures/position/isolated/XRPUSDT_PERP').json()
+                    deleteOrder = session.delete("https://api.hitbtc.com/api/3/futures/order?&symbol=XRPUSDT_PERP")
+                else:
+                    return
 
-        self.last_price = last_price    
+            elif size_quantity < 0 :
+                if (math.floor((price_entry - last_price)/self.stride)) > self.sell_count :
+                    grid_price= price_entry - self.sell_count * self.stride 
+                    side = "buy"
+                    order_data = {
+                        'symbol': 'XRPUSDT_PERP',
+                        'side': side,
+                        'time_in_force': 'Day',
+                        'quantity': math.abs(size_quantity),
+                        'price': grid_price,
+                        'type': 'stopLimit',
+                        'stop_price': grid_price * 0.9998
+                    }
+
+                    self.issueOrder(session, order_data)                    
+                    self.sell_count = max(self.sell_count, math.floor((price_entry - last_price)/self.stride)) 
+                    print("current price and buy_count",price_entry, last_price, self.sell_count, grid_price )
+                elif (self.sell_count >=3 and (self.sell_count -1) <= (math.floor((price_entry - last_price)/self.stride)) and (math.floor((price_entry - last_price)/self.stride)) <= self.sell_count) :
+                    deletePosition = session.delete('https://api.hitbtc.com/api/3/futures/position/isolated/XRPUSDT_PERP').json()                    
+                    deleteOrder = session.delete("https://api.hitbtc.com/api/3/futures/order?&symbol=XRPUSDT_PERP")
+                    return
+
+
+
+    def issueOrder(self, session, order_data):
+        response = session.post('https://api.hitbtc.com/api/3/futures/order/', data=order_data).json()
+        print(response)
+
+
+
+    def start(self, session):
+        price_query = session.get('https://api.hitbtc.com/api/3/public/ticker?symbols=XRPUSDT_PERP').json()
+        last_price = float(price_query["XRPUSDT_PERP"]["last"])
+
+        marginAccount = session.get('https://api.hitbtc.com/api/3/futures/account/isolated/XRPUSDT_PERP').json()
+        active_posts = marginAccount['positions']
+        marginBalance = float(marginAccount['currencies'][0]['margin_balance'])
+        # self.multipule = math.floor(marginBalance / 0.5) + 1
+        # self.threshold = math.floor( float(marginAccount['leverage']) * marginBalance / last_price )
+
+        if active_posts is None:
+            self.stride = last_price * 0.0012
+            self.buy_init = last_price + self.stride
+            self.sell_init = last_price - self.stride
+            self.buy_count = 1
+            self.sell_count = 1
+        else:
+
+            deletePosition = session.delete('https://api.hitbtc.com/api/3/futures/position/isolated/XRPUSDT_PERP').json()
+            print("Cancel all the position at the price of:", last_price)
+            deleteOrder = session.delete("https://api.hitbtc.com/api/3/futures/order?&symbol=XRPUSDT_PERP").json()
+            print("Cancel all the orders, restart the positions" )
+
+        return

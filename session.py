@@ -26,6 +26,8 @@ class SimulatedSession:
         self.position = None  # Initialize a Position object
         self.ticker_simulator = TickerDataSimulator("ticker_data.csv")  # Initialize a TickerDataSimulator
         self.balance = 0.0
+        self.orders = []
+
 
     def get(self, url):
         # Simulate a GET request and return position or ticker data
@@ -65,7 +67,7 @@ class SimulatedSession:
                     "currencies": [
                         {
                             "code": "USDT",
-                            "margin_balance": self.position.margin,
+                            "margin_balance": self.balance,
                             "reserved_orders": "0",
                             "reserved_positions": "0.0"
                         }
@@ -92,21 +94,73 @@ class SimulatedSession:
     def post(self, url, data):
         # Simulate a POST request to create an order using the Order class
         order = Order(data)
-        if self.position == None:
-            self.position = Position()        
-        order.fill_order(self.position)
+        self.orders.append(order)
         # self.position.update_position(order.price, order.quantity)
-        return CustomResponse(json.dumps({"message": "Successfully created order", "data": data}))
+        return CustomResponse(json.dumps({"message": "Successfully added order", "data": data}))
 
     def delete(self, url):
         # Simulate a DELETE request and return a JSON response
-        price_query = self.get('https://api.hitbtc.com/api/3/public/ticker?symbols=XRPUSDT_PERP').json()
-        last_price = float(price_query["XRPUSDT_PERP"]["last"])       
-        if self.position != None :
-            self.position.delete(last_price)
-            self.balance += self.position.profits 
-            self.position = None
-        return CustomResponse(json.dumps({"message": "Successfully deleted"}))
+        if "position/isolated" in url:
+
+            price_query = self.get('https://api.hitbtc.com/api/3/public/ticker?symbols=XRPUSDT_PERP').json()
+            last_price = float(price_query["XRPUSDT_PERP"]["last"])       
+            if self.position != None :
+                self.position.delete(last_price)
+                self.balance += self.position.profits 
+                self.position = None
+            return CustomResponse(json.dumps({"message": "Successfully deleted"}))
+        
+        elif "futures/order" in url:
+            self.orders = []
+        else: 
+            return
+
+    def updateOrders(self, price):
+
+        for index, order in enumerate(self.orders):
+            if (self.orders[index].status == "active") :
+                if self.position == None :
+                    self.position = Position()
+                self.fill_order(self.orders[index], self.position, price)
+
+    def fill_order(self, order, position, current_price):
+        if order.type == "limit":
+            if (
+                (order.side == "buy" and current_price <= order.price and order.status == "active") or
+                (order.side == "sell" and current_price >= order.price and order.status == "active")
+            ):
+                # Execute the limit order when the price meets the order price
+                order.price = current_price  # Update the order price
+                position.update_position(order.price, order.quantity, order.side)
+                order.status = "filled"
+            else:
+                order.status = "active"
+        elif order.type == "stopLimit":
+            if (
+                (order.side == "buy" and current_price >= order.stop_price and order.status == "active") or
+                (order.side == "sell" and current_price <= order.stop_price and order.status == "active")
+            ):
+                new_order_data = {
+                    'symbol': 'XRPUSDT_PERP',
+                    'side': order.side,
+                    'time_in_force': 'Day',
+                    'quantity': order.quantity,
+                    'price': order.price,
+                    'type': 'limit'
+                }
+
+                new_order = Order(new_order_data)
+                self.orders.append(new_order)
+
+            else:
+                order.status = "active"
+        elif order.type == "market":
+            # Execute the market order at the current market price
+            order.price = current_price  # Update the order price
+            position.update_position(order.price, order.quantity, order.side)
+            order.status = "filled"
+
+
 
 class TickerDataSimulator:
     def __init__(self, csv_file_name):
@@ -148,6 +202,8 @@ class TickerDataSimulator:
         }
 
     def simulate_data_stream(self):
+
+
         for i in range(len(self.data["timestamps"])):
             ticker_data = {
                 "timestamp": self.data["timestamps"][i],
@@ -165,6 +221,7 @@ class TickerDataSimulator:
                 "bid": self.data["best_bids"][i],                
                 "ask": self.data["best_asks"][i],
                 }
+
 
             # time.sleep(0.02)  # Simulate real-time data by waiting 1 second between data points
 
@@ -206,16 +263,16 @@ class Position:
 
     def update_position(self, new_price_entry, new_quantity, new_side):
         # Update the position with new data
-        if self.quantity < 0 :
+        if self.quantity <= 0 :
             if new_side == "sell":
                 if  (self.quantity - new_quantity) != 0.0 :            
-                    self.price_entry = - (self.price_entry*self.quantity - new_price_entry*new_quantity)/(self.quantity - new_quantity)
+                    self.price_entry = (self.price_entry*self.quantity - new_price_entry*new_quantity)/(self.quantity - new_quantity)
                 self.margin = - (self.price_entry*self.quantity - new_price_entry*new_quantity)/self.leverage
                 self.quantity -= new_quantity
 
             else:
                 if  (self.quantity + new_quantity) != 0.0 :
-                    self.price_entry = - (self.price_entry*self.quantity + new_price_entry*new_quantity)/(self.quantity + new_quantity)
+                    self.price_entry = (self.price_entry*self.quantity + new_price_entry*new_quantity)/(self.quantity + new_quantity)
                 self.margin = - (self.price_entry*self.quantity + new_price_entry*new_quantity)/self.leverage
                 self.quantity += new_quantity
 
@@ -240,18 +297,18 @@ class Position:
 
 
 
+
 class Order:
     def __init__(self, data):
         self.symbol = data.get("symbol")
         self.side = data.get("side")
         self.time_in_force = data.get("time_in_force")
         self.quantity = float(data.get("quantity"))
-        self.price = float(data.get("price"))        
+        self.price = float(data.get("price"))
         self.type = data.get("type")
         self.status = "active"
-        # self.stop_price = float(data.get("stop_price"))
+        self.stop_price = float(data.get("stop_price")) if "stop_price" in data else None
 
-    def fill_order(self,position):
-        # Simulate filling an order by updating the position
-        position.update_position(self.price, self.quantity, self.side)
-        self.status = "filled"
+
+    def cancel_order(self):
+        self.status = "cancelled"
