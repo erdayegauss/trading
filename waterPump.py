@@ -20,7 +20,7 @@ class TradingAlgorithm:
         self.buy_init = 0.0
         self.sell_init = 0.0
         self.stride = 0.0
-        self.multipule = 1
+        self.multipule = 4
         self.threshold = 1
         self.buy_grid = 0
         self.sell_grid = 0 
@@ -46,8 +46,8 @@ class TradingAlgorithm:
         ####  the self price is set lower than the buy price, so we even have the chance to profits
         if active_posts is None:
             self.stride = last_price * 0.0012             
-            self.sell_init = last_price + self.stride*0.5
-            self.buy_init = last_price - self.stride*0.5 
+            self.sell_init = last_price + self.stride*0.3
+            self.buy_init = last_price - self.stride*0.3 
             self.sell_grid = 0
             self.buy_grid = 0
         else:
@@ -60,30 +60,27 @@ class TradingAlgorithm:
             # self.sell_grid = 0
             # self.buy_grid = 0
         r = session.delete("https://api.hitbtc.com/api/3/futures/order?&symbol=XRPUSDT_PERP").json()
+        
 
     def issueOrder(self, session, side, price, quantity, orderType):
 
-        if orderType == "takeProfitLimit" :
+        if orderType == "stopMarket" :
             if side == "sell": 
                 order_data = {
                     'symbol': 'XRPUSDT_PERP',
                     'side': "sell",
-                    'time_in_force': 'Day',
                     'quantity': quantity,
-                    'price': price ,
-                    'type': 'takeProfitLimit',
-                    'stop_price': price * 1.0003
+                    'type': 'stopMarket',
+                    'stop_price': price - self.stride*0.2
                 }
-            else: 
-               order_data = {
+            else : 
+                order_data = {
                     'symbol': 'XRPUSDT_PERP',
                     'side': "buy",
-                    'time_in_force': 'Day',
                     'quantity': quantity,
-                    'price': price ,
-                    'type': 'takeProfitLimit',
-                    'stop_price': price * 0.9999
-                }                
+                    'type': 'stopMarket',
+                    'stop_price': price + self.stride*0.2
+                }                                    
         else: 
             order_data = {
                 'symbol': 'XRPUSDT_PERP',
@@ -92,12 +89,12 @@ class TradingAlgorithm:
                 'quantity': quantity,
                 'price': price ,
                 'type': 'limit'
-            }            
+            }
+
         #  issue the new order 
         response = session.post('https://api.hitbtc.com/api/3/futures/order/', data=order_data).json()
         print("============ The order created: ===========\n")
-        print(response)     
-
+        print(response)   
 
     def updateOrder(self, session, last_price):
 
@@ -109,13 +106,12 @@ class TradingAlgorithm:
                 self.start(session) 
             if len(activeOrders) == 0 :            
                 if last_price >= self.sell_init:
-                    print("we will sell one")
                     self.issueOrder(session, "sell", last_price, self.multipule, "limit")
                 elif last_price <= self.buy_init:                
-                    print("we will buy one")
                     self.issueOrder(session, "buy", last_price, self.multipule, "limit")
                 else:
                     return
+            self.last_post = False
 
         else:
 
@@ -123,17 +119,15 @@ class TradingAlgorithm:
             size_quantity = abs(float(active_posts[0]["quantity"]))
             price_entry = float(active_posts[0]["price_entry"])
             price_liquidation = float(active_posts[0]["price_liquidation"])
-            grid_tmp = abs(math.floor((last_price - price_entry) / self.stride))
             if last_price > price_entry:
-
-                # delete the old order if available
-                if (len(activeOrders) >= 1) and ((price_entry + grid_tmp*self.stride) > activeOrders[0]['price']) : 
-                    #  first delte the old order if order available
-                    r = session.delete("https://api.hitbtc.com/api/3/futures/order?&symbol=XRPUSDT_PERP").json()
+                grid_tmp = math.floor((last_price - price_entry) / self.stride)
 
                 print("The grid_tmp and sell_grid is: ", grid_tmp, self.sell_grid)
 
-                if (last_price > (price_entry + (self.sell_grid + 0.5)*self.stride) ) :
+                if (grid_tmp > self.sell_grid ) :
+                    if (len(activeOrders) >= 1):
+                        # delete the old order if available
+                        r = session.delete("https://api.hitbtc.com/api/3/futures/order?&symbol=XRPUSDT_PERP").json()
 
                     print("Inside the sell process")
                     # prepare the new order data
@@ -141,29 +135,27 @@ class TradingAlgorithm:
                     OrderPrice = price_entry + grid_tmp*self.stride
                     OrderQuantity = size_quantity
 
-                    self.issueOrder(session, OrderSide, OrderPrice, OrderQuantity, "takeProfitLimit")                        
-                    self.sell_grid = grid_tmp                  
+                    self.issueOrder(session, OrderSide, OrderPrice, OrderQuantity, "stopMarket")                        
+                    self.sell_grid = max(self.sell_grid, grid_tmp)
 
             elif last_price < price_entry :
+                grid_tmp = math.floor((price_entry - last_price ) / self.stride)
 
-                # delete the old order if available
-                if (len(activeOrders) >= 1) and ((price_entry - grid_tmp*self.stride) < activeOrders[0]['price']) :  
-                    #  first delte the old order if available
-                    r = session.delete("https://api.hitbtc.com/api/3/futures/order?&symbol=XRPUSDT_PERP").json() 
+                print("The grid_tmp and buy_grid is: ", grid_tmp, self.buy_grid)
 
-                print("The grid_tmp and sell_grid is: ", grid_tmp, self.sell_grid)
+                if (grid_tmp > self.buy_grid) : 
+                    if (len(activeOrders) >= 1):
+                        # delete the old order if available
+                        r = session.delete("https://api.hitbtc.com/api/3/futures/order?&symbol=XRPUSDT_PERP").json()
 
-                if (last_price < (price_entry - (self.sell_grid + 0.5)*self.stride)) :               
                     print("Inside the buy process")
-
-
                     # prepare the new order data
                     OrderSide = "buy"
                     OrderPrice = price_entry - grid_tmp*self.stride
                     OrderQuantity = size_quantity
 
-                    self.issueOrder(session, OrderSide, OrderPrice, OrderQuantity, "takeProfitLimit")                      
-                    self.buy_grid = grid_tmp
+                    self.issueOrder(session, OrderSide, OrderPrice, OrderQuantity, "stopMarket")                      
+                    self.buy_grid = max(self.buy_grid, grid_tmp)
             else :
                 return
 
@@ -207,11 +199,11 @@ def run_websocket():
 
 if __name__ == "__main__":
     trading_algo = TradingAlgorithm()  # Create an instance of the TradingAlgorithm class
-    # run_websocket()
-    ws = websocket.WebSocketApp("wss://api.hitbtc.com/api/3/ws/public",
-                                on_message=on_message,
-                                on_error=on_error,
-                                on_close=on_close,
-                                on_open=on_open)
+    run_websocket()
+    # ws = websocket.WebSocketApp("wss://api.hitbtc.com/api/3/ws/public",
+    #                             on_message=on_message,
+    #                             on_error=on_error,
+    #                             on_close=on_close,
+    #                             on_open=on_open)
 
-    ws.run_forever(http_proxy_host="127.0.0.1", http_proxy_port="10900", proxy_type="http")
+    # ws.run_forever(http_proxy_host="127.0.0.1", http_proxy_port="10900", proxy_type="http")
