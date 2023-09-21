@@ -20,8 +20,8 @@ class TradingAlgorithm:
         self.buy_init = 0.0
         self.sell_init = 0.0
         self.stride = 0.0
-        self.multipule = 4
-        self.threshold = 1
+        self.multipule = 6
+        self.threshold = 16
         self.buy_grid = 0
         self.sell_grid = 0 
         self.last_post = False
@@ -41,18 +41,18 @@ class TradingAlgorithm:
         active_posts = marginAccount['positions']
         marginBalance = float(marginAccount['currencies'][0]['margin_balance'])
         # self.multipule = math.floor(marginBalance / 0.5) + 1
-        # self.threshold = math.floor( float(marginAccount['leverage']) * marginBalance / last_price )
+        # self.incremental = math.floor( float(marginAccount['leverage']) * marginBalance / last_price )
 
         ####  the self price is set lower than the buy price, so we even have the chance to profits
         if active_posts is None:
-            self.stride = last_price * 0.0012             
+            self.stride = last_price * 0.0010             
             self.sell_init = last_price + self.stride*0.3
             self.buy_init = last_price - self.stride*0.3 
             self.sell_grid = 0
             self.buy_grid = 0
         else:
             price_entry = float(active_posts[0]["price_entry"])
-            self.stride = last_price * 0.0012             
+            self.stride = last_price * 0.001             
             self.sell_init = price_entry + self.stride
             self.buy_init = price_entry - self.stride
             self.sell_grid = max(math.floor((last_price - price_entry) / self.stride), 0)
@@ -64,32 +64,56 @@ class TradingAlgorithm:
 
     def issueOrder(self, session, side, price, quantity, orderType):
 
-        if orderType == "stopMarket" :
-            if side == "sell": 
-                order_data = {
-                    'symbol': 'XRPUSDT_PERP',
-                    'side': "sell",
-                    'quantity': quantity,
-                    'type': 'stopMarket',
-                    'stop_price': price - self.stride*0.2
-                }
-            else : 
-                order_data = {
-                    'symbol': 'XRPUSDT_PERP',
-                    'side': "buy",
-                    'quantity': quantity,
-                    'type': 'stopMarket',
-                    'stop_price': price + self.stride*0.2
-                }                                    
+        if orderType == "stop" :
+            if side == "sell":
+                if quantity < 0:
+                    order_data = {
+                        'symbol': 'XRPUSDT_PERP',
+                        'side': "sell",
+                        'time_in_force': 'Day',
+                        'quantity': self.multipule,
+                        'type': 'takeProfitLimit',
+                        'stop_price': price+self.stride*0.75,
+                        'price': price + self.stride*1.25
+                    }                   
+                else :
+                    order_data = {
+                        'symbol': 'XRPUSDT_PERP',
+                        'side': "sell",
+                        'quantity': self.multipule,
+                        'type': 'stopMarket',
+                        'stop_price': price - self.stride*0.2
+                    }
+            else :
+                if quantity < 0:
+
+                    order_data = {
+                        'symbol': 'XRPUSDT_PERP',
+                        'side': "buy",
+                        'quantity': self.multipule,
+                        'type': 'stopMarket',
+                        'stop_price': price + self.stride*0.2
+                    }                     
+                else :
+                    order_data = {
+                        'symbol': 'XRPUSDT_PERP',
+                        'side': "buy",
+                        'time_in_force': 'Day',
+                        'quantity': self.multipule,
+                        'type': 'takeProfitLimit',
+                        'stop_price': price - self.stride*0.75,
+                        'price': price - self.stride*1.25
+                    }                                                      
         else: 
             order_data = {
                 'symbol': 'XRPUSDT_PERP',
                 'side': side,
                 'time_in_force': 'Day',
-                'quantity': quantity,
+                'quantity': self.multipule,
                 'price': price ,
                 'type': 'limit'
             }
+
 
         #  issue the new order 
         response = session.post('https://api.hitbtc.com/api/3/futures/order/', data=order_data).json()
@@ -104,6 +128,7 @@ class TradingAlgorithm:
         if active_posts is None : 
             if self.last_post == True:
                 self.start(session) 
+                self.last_post = False
             if len(activeOrders) == 0 :            
                 if last_price >= self.sell_init:
                     self.issueOrder(session, "sell", last_price, self.multipule, "limit")
@@ -115,8 +140,7 @@ class TradingAlgorithm:
 
         else:
 
-            self.last_post = True
-            size_quantity = abs(float(active_posts[0]["quantity"]))
+            size_quantity = float(active_posts[0]["quantity"])
             price_entry = float(active_posts[0]["price_entry"])
             price_liquidation = float(active_posts[0]["price_liquidation"])
             if last_price > price_entry:
@@ -124,7 +148,7 @@ class TradingAlgorithm:
 
                 print("The grid_tmp and sell_grid is: ", grid_tmp, self.sell_grid)
 
-                if (grid_tmp > self.sell_grid ) :
+                if (grid_tmp > self.sell_grid ) and (abs(size_quantity) < self.threshold) :
                     if (len(activeOrders) >= 1):
                         # delete the old order if available
                         r = session.delete("https://api.hitbtc.com/api/3/futures/order?&symbol=XRPUSDT_PERP").json()
@@ -135,15 +159,16 @@ class TradingAlgorithm:
                     OrderPrice = price_entry + grid_tmp*self.stride
                     OrderQuantity = size_quantity
 
-                    self.issueOrder(session, OrderSide, OrderPrice, OrderQuantity, "stopMarket")                        
+                    self.issueOrder(session, OrderSide, OrderPrice, OrderQuantity, "stop")                        
                     self.sell_grid = max(self.sell_grid, grid_tmp)
+                    self.buy_grid = 0                    
 
             elif last_price < price_entry :
                 grid_tmp = math.floor((price_entry - last_price ) / self.stride)
 
                 print("The grid_tmp and buy_grid is: ", grid_tmp, self.buy_grid)
 
-                if (grid_tmp > self.buy_grid) : 
+                if (grid_tmp > self.buy_grid) and (abs(size_quantity) < self.threshold) : 
                     if (len(activeOrders) >= 1):
                         # delete the old order if available
                         r = session.delete("https://api.hitbtc.com/api/3/futures/order?&symbol=XRPUSDT_PERP").json()
@@ -154,10 +179,13 @@ class TradingAlgorithm:
                     OrderPrice = price_entry - grid_tmp*self.stride
                     OrderQuantity = size_quantity
 
-                    self.issueOrder(session, OrderSide, OrderPrice, OrderQuantity, "stopMarket")                      
+                    self.issueOrder(session, OrderSide, OrderPrice, OrderQuantity, "stop")                      
                     self.buy_grid = max(self.buy_grid, grid_tmp)
+                    self.sell_grid = 0
             else :
                 return
+
+            self.last_post = True
 
 def on_message(ws, message):
     data = json.loads(message)
