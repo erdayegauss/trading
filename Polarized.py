@@ -48,8 +48,8 @@ class TradingAlgorithm:
         ####  the self price is set lower than the buy price, so we even have the chance to profits
         if active_posts is None:
             self.stride = last_price * 0.0012             
-            self.sell_init = last_price - self.stride*0.2
-            self.buy_init = last_price + self.stride*0.2 
+            self.sell_init = last_price - self.stride
+            self.buy_init = last_price + self.stride 
             self.sell_grid = 0
             self.buy_grid = 0
             self.sell_grid_init = -1
