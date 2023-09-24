@@ -5,6 +5,8 @@ import time
 import math
 from datetime import datetime
 import json
+import matplotlib.pyplot as plt
+
 
 # Define the CSV file name with historical data
 class CustomResponse:
@@ -88,8 +90,22 @@ class SimulatedSession:
                     ]
                 }    
             return  CustomResponse(json.dumps(account_data))
+        elif "futures/order/" in url:
+
+            parts = url.split('/')
+            order_id = parts[-1]
+            order_data = {}
+
+            for order in self.orders:
+                if order.client_order_id == order_id:
+                    order.cancel_order()
+                    order_data = {
+                        "client_order_id": order.client_order_id
+                    }
+            return CustomResponse(json.dumps(order_data))
+        
         else:
-            return {"json": {}}
+            return {}
 
     def post(self, url, data):
         # Simulate a POST request to create an order using the Order class
@@ -101,7 +117,6 @@ class SimulatedSession:
     def delete(self, url):
         # Simulate a DELETE request and return a JSON response
         if "position/isolated" in url:
-
             price_query = self.get('https://api.hitbtc.com/api/3/public/ticker?symbols=XRPUSDT_PERP').json()
             last_price = float(price_query["XRPUSDT_PERP"]["last"])       
             if self.position != None :
@@ -110,10 +125,41 @@ class SimulatedSession:
                 self.position = None
             return CustomResponse(json.dumps({"message": "Successfully deleted"}))
         
-        elif "futures/order" in url:
+        elif "futures/order?&symbol=XRPUSDT_PERP" in url:
             self.orders = []
+            return CustomResponse(json.dumps({"message": "Successfully deleted"}))
+        elif "futures/order/" in url:
+            parts = url.split('/')
+            order_id = parts[-1]
+            for order in self.orders:
+                if order.client_order_id == order_id:
+                    order.cancel_order()
+                return CustomResponse(json.dumps({"message": "Successfully deleted the order:"+order_id}))
+            return CustomResponse(json.dumps({}))
+
         else: 
             return
+
+    def patch(self, url,data):
+        # Simulate a DELETE request and return a JSON response
+        if "futures/order/" in url:
+            parts = url.split('/')
+            order_id = parts[-1]
+
+            for order in self.orders:
+                if order.client_order_id == order_id:
+                    tmpOrder = {
+                    "client_order_id": order.client_order_id,
+                    "symbol": order.symbol,
+                    "side": order.side,
+                    "status": order.status,
+                    "type": order.type,
+                    "quantity": order.quantity
+                    }
+                    order.update_order(tmpOrder)
+
+
+            return CustomResponse(json.dumps(tmpOrder))
 
     def updateOrders(self, price):
 
@@ -141,6 +187,7 @@ class SimulatedSession:
                 (order.side == "sell" and current_price <= order.stop_price and order.status == "active")
             ):
                 new_order_data = {
+                    'client_order_id': order.client_order_id,
                     'symbol': 'XRPUSDT_PERP',
                     'side': order.side,
                     'time_in_force': 'Day',
@@ -151,9 +198,57 @@ class SimulatedSession:
 
                 new_order = Order(new_order_data)
                 self.orders.append(new_order)
+                order.cancel_order()
 
             else:
                 order.status = "active"
+        elif order.type == "takeProfitLimit":
+            if (
+                (order.side == "buy" and current_price <= order.stop_price and order.status == "active") or
+                (order.side == "sell" and current_price >= order.stop_price and order.status == "active")
+            ):
+                new_order_data = {
+                    'client_order_id': order.client_order_id,
+                    'symbol': 'XRPUSDT_PERP',
+                    'side': order.side,
+                    'time_in_force': 'Day',
+                    'quantity': order.quantity,
+                    'price': order.price,
+                    'type': 'limit'
+                }
+
+                new_order = Order(new_order_data)
+                self.orders.append(new_order)
+                order.cancel_order()
+
+            else:
+                order.status = "active"  
+        elif order.type == "stopMarket":
+            if (order.side == "buy" and current_price >= order.stop_price and order.status == "active"): 
+                new_order_data = {
+                    'client_order_id': order.client_order_id,
+                    'symbol': 'XRPUSDT_PERP',
+                    'side': order.side,
+                    'time_in_force': 'Day',
+                    'quantity': order.quantity,
+                    'price': order.stop_price*1.0004,
+                    'type': 'limit'
+                }
+            if (order.side == "sell" and current_price <= order.stop_price and order.status == "active"):
+                new_order_data = {
+                    'client_order_id': order.client_order_id,
+                    'symbol': 'XRPUSDT_PERP',
+                    'side': order.side,
+                    'time_in_force': 'Day',
+                    'quantity': order.quantity,
+                    'price': order.stop_price*0.9996,
+                    'type': 'limit'
+                }
+                new_order = Order(new_order_data)
+                self.orders.append(new_order)
+                order.cancel_order()
+            else:
+                order.status = "active"                
         elif order.type == "market":
             # Execute the market order at the current market price
             order.price = current_price  # Update the order price
@@ -191,7 +286,33 @@ class TickerDataSimulator:
                 best_bids.append(float(best_bid))
                 best_bid_quantities.append(float(best_bid_quantity))
                 last_prices.append(float(last_price))
-        
+
+
+                numerical_timeframes = range(len(timeframes))
+
+                # Create a line chart
+                plt.figure(figsize=(10, 5))
+                plt.plot(numerical_timeframes, last_prices, marker='.', linestyle='-', color='b')
+
+                # Add labels and title
+                plt.xlabel("Timeframes")
+                plt.ylabel("Last Prices")
+                plt.title("Price Trend Over Time")
+
+                # Set x-axis ticks as timeframes
+                plt.xticks(numerical_timeframes, timeframes, rotation=45)
+
+                # Show the plot
+                plt.grid(True)
+                plt.tight_layout()
+                # Save the plot to an image file (e.g., PNG)
+                plt.savefig("./price_chart.png")
+
+                # Optionally, you can also display the plot
+                plt.show()
+
+
+
         return {
             "timestamps": timestamps,
             "best_asks": best_asks,
@@ -200,6 +321,10 @@ class TickerDataSimulator:
             "best_bid_quantities": best_bid_quantities,
             "last_prices": last_prices
         }
+
+
+
+
 
     def simulate_data_stream(self):
 
@@ -302,13 +427,35 @@ class Order:
     def __init__(self, data):
         self.symbol = data.get("symbol")
         self.side = data.get("side")
-        self.time_in_force = data.get("time_in_force")
+        self.time_in_force = data.get("time_in_force")  if "time_in_force" in data else "day"
         self.quantity = float(data.get("quantity"))
-        self.price = float(data.get("price"))
+        self.price = float(data.get("price"))          if "price" in data else None 
         self.type = data.get("type")
         self.status = "active"
+        self.client_order_id = data.get("client_order_id") if "client_order_id" in data else "000000"
         self.stop_price = float(data.get("stop_price")) if "stop_price" in data else None
 
 
     def cancel_order(self):
         self.status = "cancelled"
+
+    def update_order(self, new_data):
+        # Update the order attributes based on new data
+        if "symbol" in new_data:
+            self.symbol = new_data["symbol"]
+        if "side" in new_data:
+            self.side = new_data["side"]
+        if "time_in_force" in new_data:
+            self.time_in_force = new_data["time_in_force"]
+        if "quantity" in new_data:
+            self.quantity = float(new_data["quantity"])
+        if "price" in new_data:
+            self.price = float(new_data["price"])
+        if "type" in new_data:
+            self.type = new_data["type"]
+        if "status" in new_data:
+            self.status = new_data["status"]
+        if "client_order_id" in new_data:
+            self.client_order_id = new_data["client_order_id"]
+        if "stop_price" in new_data:
+            self.stop_price = float(new_data["stop_price"])

@@ -11,7 +11,8 @@ session.proxies = {
     'https': 'http://127.0.0.1:10900',
 }
 
-session.auth = ("5oZmOm5bhoo577V_eDyPAqi7bvgsfEud", "YJhSsmyR1sFsrYXHExrYeeNx4mKKPeVn")
+# session.auth = ("5oZmOm5bhoo577V_eDyPAqi7bvgsfEud", "YJhSsmyR1sFsrYXHExrYeeNx4mKKPeVn")
+session.auth = ("ZTTen-xc8YAxDydaWNgXI6QzJt89ah0I", "lPsul5B7dUF82QwUkRTAsf0rlHm4cxE9")
 
 class TradingAlgorithm:
     def __init__(self, ws_endpoint="wss://api.hitbtc.com/api/3/ws/public", asset="XRP"):
@@ -47,9 +48,9 @@ class TradingAlgorithm:
 
         ####  the self price is set lower than the buy price, so we even have the chance to profits
         if active_posts is None:
-            self.stride = last_price * 0.0015             
-            self.sell_init = last_price + self.stride*0.2
-            self.buy_init = last_price - self.stride*0.2 
+            self.stride = last_price * 0.0012             
+            self.sell_init = last_price + self.stride*0.25
+            self.buy_init = last_price - self.stride*0.25 
             self.sell_grid = 0
             self.buy_grid = 0
             self.sell_grid_init = -1
@@ -57,7 +58,7 @@ class TradingAlgorithm:
 
         else:
             price_entry = float(active_posts[0]["price_entry"])
-            self.stride = last_price * 0.0015             
+            self.stride = last_price * 0.0012             
             self.sell_init = price_entry + self.stride
             self.buy_init = price_entry - self.stride
             self.sell_grid = max(math.floor((last_price - price_entry) / self.stride)-1, 0)

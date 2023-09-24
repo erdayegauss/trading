@@ -8,8 +8,9 @@ import json
 from session import SimulatedSession
 
 from algorithm import TradingAlgorithm, TrapAlgorithm
+from SellBuy import TradingAlgorithmSellBuy
 
-def on_open(session, algorithm):
+def on_open(session, algo):
 
     ticker_data = next(session.ticker_simulator.simulate_data_stream())['last_price']
     session.ticker_simulator.current_ticker = {
@@ -18,7 +19,7 @@ def on_open(session, algorithm):
     "ask": next(session.ticker_simulator.simulate_data_stream())['best_ask']}
 
     ###### All the  Algorithms has a start function
-    algorithm.start(session)
+    algo.start(session)
     print("Subscribe to the XRPUSDT ticker data")
 
 
@@ -49,8 +50,10 @@ if __name__ == "__main__":
 
 
     ## load the algorithm trap
-    trap = TrapAlgorithm()
-    on_open(session, trap)
+    # algo = TrapAlgorithm()
+    algo = TradingAlgorithmSellBuy()
+
+    on_open(session, algo)
 
     for ticker in session.ticker_simulator.simulate_data_stream():
 
@@ -59,5 +62,9 @@ if __name__ == "__main__":
         ## update orders every ticker
         session.updateOrders(last_price)
 
+        # ###### Algorithm implementation 
+        # algo.trap(session, last_price)
+
         ###### Algorithm implementation 
-        trap.trap(session, last_price)
+        algo.updateOrder(session, last_price)
+        
