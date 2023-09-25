@@ -14,15 +14,15 @@ session.proxies = {
     'https': 'http://127.0.0.1:10900',
 }
 
-session.auth = ("5oZmOm5bhoo577V_eDyPAqi7bvgsfEud", "YJhSsmyR1sFsrYXHExrYeeNx4mKKPeVn")
-# session.auth = ("ZTTen-xc8YAxDydaWNgXI6QzJt89ah0I", "lPsul5B7dUF82QwUkRTAsf0rlHm4cxE9")
+session.auth = ("ZTTen-xc8YAxDydaWNgXI6QzJt89ah0I", "lPsul5B7dUF82QwUkRTAsf0rlHm4cxE9")
+# session.auth = ()
 
 class TradingAlgorithmSellBuy:
     def __init__(self, ws_endpoint="wss://api.hitbtc.com/api/3/ws/public", asset="XRP"):
         self.ws_endpoint = ws_endpoint
         self.asset = asset
         self.stride = 0.0
-        self.multipule = 1
+        self.multipule = 4
         self.last_post = False
         self.sell_order_price = 0
         self.buy_order_price = 0        
@@ -39,6 +39,35 @@ class TradingAlgorithmSellBuy:
         characters = string.ascii_letters + string.digits
         random_string = ''.join(secrets.choice(characters) for _ in range(16))
         return random_string
+
+    def find_grid_number(self, sum, stride):
+        if stride <= 0 or sum <= 0:
+            raise ValueError("Invalid inputs. Ensure q and price are greater than 0.")
+        grid_sum = 0.0
+        grid_number = 0
+        while grid_sum < sum:
+            grid_number += 1
+            grid_sum += self.stride*1.3**grid_number
+        return grid_number
+
+
+
+    def grid_caculator (self, last_price, price_entry):
+        # This is loss function caculator, if the last_price larger than the price_entry, sell; other wise, buy
+        grid_mumber = self.find_grid_number( abs(last_price - price_entry), self.stride)
+
+        if last_price > price_entry:
+            grid_price = price_entry + (self.stride)*((1.3)**(grid_mumber+1) -1 )/ (1.3 - 1)
+            print("caculate the remedy price and grid number:", grid_price, grid_mumber)
+            return grid_price, grid_number
+
+        else: 
+            grid_price = price_entry - (self.stride)*((1.3)**(grid_mumber+1) -1 )/ (1.3 - 1)
+            print("caculate the remedy price and number2:", grid_price, grid_mumber)
+            return grid_price, grid_number
+
+    
+    
 
 
     def check_order_exists(self, session, order_id):
@@ -60,18 +89,24 @@ class TradingAlgorithmSellBuy:
         last_price = float(price_query["XRPUSDT_PERP"]["last"])
         activeOrders = session.get('https://api.hitbtc.com/api/3/futures/order').json()
         
-        # r = session.delete("https://api.hitbtc.com/api/3/futures/order?&symbol=XRPUSDT_PERP").json()
+        r = session.delete("https://api.hitbtc.com/api/3/futures/order?&symbol=XRPUSDT_PERP").json()
         self.stride = last_price * 0.0008    
          
         self.sell_order_price = last_price + self.stride*1.25
         self.buy_order_price = last_price - self.stride*1.25 
         self.sell_order_id = self.generate_hash("buy")
         self.buy_order_id = self.generate_hash("sell")
-        if (len(activeOrders) >0) and (activeOrders[0]["type"] == "takeProfitLimit"):
-            if activeOrders[0]["side"] == "buy":
-                self.buy_order_id = activeOrders[0]["client_order_id"]
-            else :
-                self.sell_order_id = activeOrders[0]["client_order_id"]
+        # priceTmp = 0.0
+        # if (len(activeOrders) >0):
+        #     for orderEle in activeOrders: 
+        #         if (orderEle["side"] == "buy"):
+        #             if ((orderEle["price"] + self.stride*1.25) < self.buy_order_id) :
+        #                 self.buy_order_price = orderEle["price"] + self.stride*1.25
+        #                 self.buy_order_id = orderEle["client_order_id"]
+        #         else :
+        #             if ((orderEle["price"] - self.stride*1.25) > self.buy_order_id) :
+        #                 self.sell_order_price = orderEle["price"]  - self.stride*1.25
+        #                 self.sell_order_id = orderEle["client_order_id"]                    
         print("The init params are:",self.stride,self.sell_order_price, self.buy_order_price,  self.sell_order_id,self.buy_order_id)
 
         
@@ -213,23 +248,49 @@ class TradingAlgorithmSellBuy:
             price_entry = float(active_posts[0]["price_entry"])
             price_liquidation = float(active_posts[0]["price_liquidation"])
 
+            if self.last_post == False:
+                responseDelete = session.delete("https://api.hitbtc.com/api/3/futures/order?&symbol=XRPUSDT_PERP").json()
+                print("Clean up the legacy orders",responseDelete)
+                self.sell_order_price = price_entry + 0.5*self.stride
+                self.buy_order_price = price_entry - 0.5*self.stride
+                self.last_post = True
+
+
+
             if (size_quantity > 0) :
-                if (self.sell_order_price > price_entry) and ((last_price - self.sell_order_price) > self.stride)  :
-                    self.sell_order_price = self.stride * math.floor(last_price/self.stride )
+                #  this is the profits process
+                if ((last_price - self.sell_order_price) > self.stride)  or (last_price - price_entry) > self.stride :
+                    self.sell_order_price = self.stride * math.floor(last_price/self.stride )                                            
                     if (self.check_order_exists(session, self.sell_order_id)): 
                         print("update  sell order, last_price,sell_order_price : ",last_price, self.sell_order_price)                    
-                        self.issueOrder(session, 'sell', self.sell_order_price, self.multipule, 'replace')
+                        self.issueOrder(session, 'sell', self.sell_order_price, size_quantity, 'replace')
                     else:
-                        self.issueOrder(session, 'sell', self.sell_order_price, self.multipule, 'inside')                    
+                        self.issueOrder(session, 'sell', self.sell_order_price, size_quantity, 'inside')  
+                # the loss action 
+                elif (last_price < price_entry) :  
+
+                    print("In loss mode")
+                    loss_price, loss_quanity = self.grid_caculator(last_price, price_entry)
+                    self.issueOrder(session, 'buy', loss_price, loss_quanity, 'start')
+                else: 
+                    return
+                    
+                    
+                    
+
             else:
-                if (self.buy_order_price < price_entry) and ((self.buy_order_price - last_price) > self.stride) :
+                if ((self.buy_order_price - last_price) > self.stride) or (price_entry - last_price) > self.stride:
                     self.buy_order_price = self.stride * (math.floor(last_price/self.stride) + 1)
                     if (self.check_order_exists(session, self.buy_order_id)):
                         print("update  buy order, last_price,sell_order_price : ",last_price, self.sell_order_price)                    
-                        self.issueOrder(session, 'buy', self.buy_order_price, self.multipule, 'replace')
+                        self.issueOrder(session, 'buy', self.buy_order_price, abs(size_quantity), 'replace')
                     else:
-                        self.issueOrder(session, 'buy', self.buy_order_price, self.multipule, 'inside')
-
+                        self.issueOrder(session, 'buy', self.buy_order_price, abs(size_quantity), 'inside')
+                elif (last_price > price_entry) :
+                    loss_price, loss_quanity = self.grid_caculator(last_price, price_entry)
+                    self.issueOrder(session, 'sell', loss_price, loss_quanity, 'start')
+                else: 
+                    return
             self.last_post = True
 
 def on_message(ws, message):
@@ -280,4 +341,3 @@ if __name__ == "__main__":
     #                             on_open=on_open)
 
     # ws.run_forever(http_proxy_host="127.0.0.1", http_proxy_port="10900", proxy_type="http")
-
